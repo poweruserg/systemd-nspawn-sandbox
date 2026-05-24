@@ -1,0 +1,30 @@
+#!/bin/bash
+# usage: sb-reset <path>
+# stops sandbox and wipes its upper layer (rollback to host's state)
+set -e
+SB="$(realpath -m "${1:?usage: $0 <path>}")"
+NAME="$(basename "$SB")"
+MACHINE="${NAME//_/-}"
+MERGED="/tmp/sb-merged-$MACHINE"
+
+if [[ ! -d "$SB" ]]; then
+  echo "sandbox dir '$SB' does not exist"
+  exit 0
+fi
+
+if pgrep -f "systemd-nspawn.*--machine=$MACHINE" >/dev/null; then
+  sudo systemctl stop "nspawn-$MACHINE"
+  echo "sandbox '$NAME' stopped"
+fi
+
+if mountpoint -q "$MERGED"; then
+  sudo umount "$MERGED"
+fi
+sudo rmdir "$MERGED" 2>/dev/null || true
+
+read -p "wipe upper layer of '$SB' (keep dir structure)? [y/N] " a
+[[ $a == y || $a == Y ]] || { echo "aborted"; exit 1; }
+
+sudo rm -rf "$SB/upper" "$SB/work"
+mkdir -p "$SB/upper" "$SB/work"
+echo "sandbox '$NAME' reset"

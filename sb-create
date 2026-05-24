@@ -1,0 +1,49 @@
+#!/bin/bash
+# usage: sb-create <path>
+# create and start a new sandbox at <path>
+set -e
+SB="$(realpath -m "${1:?usage: $0 <path>}")"
+NAME="$(basename "$SB")"
+MACHINE="${NAME//_/-}"
+MERGED="/tmp/sb-merged-$MACHINE"
+
+if [[ -d "$SB/upper" ]]; then
+  echo "sandbox '$SB' already exists — use sb-resume to start it again" >&2
+  exit 1
+fi
+
+mkdir -p "$SB/upper" "$SB/work"
+sudo mkdir -p "$MERGED"
+
+sudo mount -t overlay overlay \
+  -o lowerdir=/,upperdir="$SB/upper",workdir="$SB/work" \
+  "$MERGED"
+
+sudo install -Dm644 /dev/stdin "$SB/upper/etc/profile.d/sb-prompt.sh" <<EOF
+export SB_NAME='$NAME'
+PROMPT_COMMAND='_c=\$([ \$EUID -eq 0 ] && echo 31 || echo 32); PS1="\[\033[1;33m\][sb:\[\033[1;36m\]\$SB_NAME\[\033[1;33m\]]\[\033[1;\${_c}m\] \u@\h\[\033[0m\]:\w\\\$ "'
+EOF
+
+INACCESSIBLE=()
+if [[ "$(findmnt -no TARGET --target "$SB")" == "/" ]]; then
+  INACCESSIBLE=(--inaccessible="$SB")
+fi
+
+sudo systemd-run --collect --unit="nspawn-$MACHINE" \
+  systemd-nspawn \
+    --boot \
+    --directory="$MERGED" \
+    --machine="$MACHINE" \
+    --register=no \
+    --link-journal=no \
+    --resolv-conf=off \
+    --bind-ro=/run/systemd/resolve \
+    "${INACCESSIBLE[@]}"
+
+sleep 2
+echo "sandbox '$NAME' created and running ($SB)"
+echo "  enter:  sb-enter  $SB"
+echo "  stop:   sb-stop   $SB"
+echo "  resume: sb-resume $SB"
+echo "  reset:  sb-reset  $SB"
+echo "  wipe:   sb-wipe   $SB"

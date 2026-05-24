@@ -1,0 +1,21 @@
+#!/bin/bash
+# usage: sb-enter <path> [root]
+set -e
+SB="$(realpath -m "${1:?usage: $0 <path> [root]}")"
+NAME="$(basename "$SB")"
+MACHINE="${NAME//_/-}"
+AS_ROOT="${2:-}"
+
+NSPAWN_PID=$(pgrep -f "systemd-nspawn.*--machine=$MACHINE" | head -1)
+[[ -n "$NSPAWN_PID" ]] || { echo "sandbox '$NAME' not running" >&2; exit 1; }
+
+INIT_PID=$(pgrep -P "$NSPAWN_PID" | head -1)
+[[ -n "$INIT_PID" ]] || { echo "container init not found" >&2; exit 1; }
+
+if [[ "$AS_ROOT" == "root" ]]; then
+  sudo nsenter --target "$INIT_PID" --all --root --wd -- \
+    script -qc "exec bash -l" /dev/null
+else
+  sudo nsenter --target "$INIT_PID" --all --root --wd -- \
+    script -qc "su - $USER" /dev/null
+fi

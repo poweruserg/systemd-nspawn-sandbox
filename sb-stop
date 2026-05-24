@@ -1,0 +1,19 @@
+#!/bin/bash
+# usage: sb-stop <path>
+set -e
+SB="$(realpath -m "${1:?usage: $0 <path>}")"
+NAME="$(basename "$SB")"
+MACHINE="${NAME//_/-}"
+MERGED="/tmp/sb-merged-$MACHINE"
+
+if pgrep -f "systemd-nspawn.*--machine=$MACHINE" >/dev/null; then
+  sudo systemctl stop "nspawn-$MACHINE"
+  echo "sandbox '$NAME' stopped"
+else
+  echo "sandbox '$NAME' was not running"
+fi
+
+if mountpoint -q "$MERGED"; then
+  sudo umount "$MERGED"
+fi
+sudo rmdir "$MERGED" 2>/dev/null || true

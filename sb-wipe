@@ -1,0 +1,30 @@
+#!/bin/bash
+# usage: sb-wipe <path>
+set -e
+SB="$(realpath -m "${1:?usage: $0 <path>}")"
+NAME="$(basename "$SB")"
+MACHINE="${NAME//_/-}"
+MERGED="/tmp/sb-merged-$MACHINE"
+
+if [[ ! -d "$SB" ]] && ! pgrep -f "systemd-nspawn.*--machine=$MACHINE" >/dev/null \
+   && ! mountpoint -q "$MERGED"; then
+  echo "sandbox '$SB' does not exist (and nothing to clean up)" >&2
+  exit 1
+fi
+
+if pgrep -f "systemd-nspawn.*--machine=$MACHINE" >/dev/null; then
+  sudo systemctl stop "nspawn-$MACHINE"
+  echo "sandbox '$NAME' stopped"
+fi
+
+if mountpoint -q "$MERGED"; then
+  sudo umount "$MERGED"
+fi
+sudo rmdir "$MERGED" 2>/dev/null || true
+
+if [[ -d "$SB" ]]; then
+  read -p "wipe '$SB'? [y/N] " a
+  [[ $a == y || $a == Y ]] || { echo "aborted"; exit 1; }
+  sudo rm -rf "$SB"
+  echo "sandbox '$NAME' wiped"
+fi

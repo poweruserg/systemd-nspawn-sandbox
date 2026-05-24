@@ -1,0 +1,23 @@
+#!/bin/bash
+# usage: sb-list
+# show all running sandboxes
+set -e
+
+pids=$(pgrep -f "systemd-nspawn.*--machine=" || true)
+if [[ -z "$pids" ]]; then
+  echo "no sandboxes running"
+  exit 0
+fi
+
+printf "%-20s %-8s %s\n" "MACHINE" "PID" "PATH"
+for pid in $pids; do
+  cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || continue)
+  machine=$(echo "$cmdline" | grep -oP -- '--machine=\K\S+')
+  directory=$(echo "$cmdline" | grep -oP -- '--directory=\K\S+')
+  [[ -z "$machine" ]] && continue
+
+  upperdir=$(findmnt -no OPTIONS "$directory" 2>/dev/null | grep -oP 'upperdir=\K[^,]+')
+  sb=$(dirname "$upperdir" 2>/dev/null)
+
+  printf "%-20s %-8s %s\n" "$machine" "$pid" "${sb:-?}"
+done
